@@ -1,0 +1,308 @@
+---
+title: "Global Terrorism Analysis"
+author: "Shreyas"
+output:
+  html_document:
+    number_sections: true
+    toc: true
+    
+    
+---
+
+## About the dataset
+
+The Global Terrorism Database (GTD) is the most comprehensive unclassified database of terrorist attacks in the world. The National Consortium for the Study of Terrorism and Responses to Terrorism (START) makes the GTD available via this site in an effort to improve understanding of terrorist violence, so that it can be more readily studied and defeated. The GTD is produced by a dedicated team of researchers and technical staff.
+
+The GTD is an open-source database, which provides information on domestic and international terrorist attacks around the world since 1970, and now includes more than 200,000 events. For each event, a wide range of information is available, including the date and location of the incident, the weapons used, nature of the target, the number of casualties, and – when identifiable – the group or individual responsible.
+Link of the dataset: https://www.start.umd.edu/gtd/access/
+
+
+# Data Preparation 
+## Load libraries
+```{r message=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(data.table)
+library(lubridate)
+library(RColorBrewer)
+library(gridExtra)
+library(plotly)
+library(ggthemes)
+library(wesanderson)
+library(leaflet)
+library(VIM)
+
+```
+## Load data
+```{r message=TRUE, warning=FALSE}
+dt <- as.tibble(fread("globalterrorismdb_0221dist.csv",
+                      na.strings = c("", "NA")))
+dt
+```
+##There are 135 variables in the original data.We'll select variables that are relatively easy to interpret and have less missing values: year, month, location, number of kill, ransom, suicide...
+
+There are ``r length(names(dt))`` variables in the original data.
+```{r}
+gbtr <- select(dt, c(1,2,3,4,9,11,12,13,14,15,18,27,28,59,99,113,117))
+gbtr$imonth[gbtr$imonth==0] <- NA
+gbtr$iday[gbtr$iday==0] <- NA
+
+gbtr2k <- gbtr %>% filter(iyear>=2000)
+gbtr2k$imonth[gbtr2k$imonth==0] <- NA
+gbtr2k$iday[gbtr2k$iday==0] <- NA
+
+glimpse(gbtr)
+```
+## some sample values
+```{r}
+head(gbtr)
+```
+
+## Visualization of missing value 
+##matrix plot for finding  number of missing(NA) values in the attributes
+
+```{r}
+matrixplot(gbtr, sortby = c("nkill"))
+aggr(gbtr, labels=names(gbtr),cex.axis = .9)
+```
+##Variables such as location, nhours, and ransom has large number of missing valid entries/values.EDA with these variables will be avoided for further reduction of complexity.
+
+Variables such as location, nhours, and ransom has large number of missing values. EDA with thses variables will be avoided.
+
+# Analysis by line plot with pointed marker
+## Events by year
+```{r byyear, fig.width=10}
+p <- gbtr %>% mutate(iyear=as.factor(iyear))  %>%
+  group_by(iyear) %>% count() %>% 
+  ggplot(aes(x=iyear,y=n,group=1)) +
+  geom_line(size=1, color="brown")+
+  geom_point(color="brown") +
+  scale_x_discrete(
+    breaks=c("1970", "2000","2008", "2011", "2014","2017")
+    ) +
+  labs(title = "Event by year", x = "year", y = "count")+
+  theme_economist() 
+p
+```
+
+There is a rapid increase in terrorist event since year 2000. 
+We'll seperately observe the trend by the region.
+
+## Overall trend in each region
+##lineplot with hovering effect
+```{r regiontrend}
+p4 <- gbtr %>% count(region_txt, iyear) %>% 
+  ggplot(aes(iyear, n,color=region_txt)) +
+  geom_line(aes(group=region_txt)) +
+  labs(title = "Trend by Region", x="year", y="count", color="region")+
+  theme_light()
+ggplotly(p4)
+```
+
+**Hovering over the plot to see region label**
+Middle East & North Africa and South Asia are the regions mainly responsible for the spike in data.
+
+## Events & num. of kills by region
+##horizontal bar graph
+Since there is a steep upward trend since aproximately year 2000, 
+we'll inspect the period before and after 2000 seperately.
+```{r byregion, fig.width=13, message=FALSE, warning=FALSE}
+p2 <- gbtr %>% mutate(pd=ifelse(iyear<2000,"before 2000", "after 2000")) %>%
+  mutate(pd = factor(pd, levels = c("before 2000", "after 2000")))%>% 
+  group_by(region_txt, pd) %>% count() %>%
+  ggplot(aes(x=reorder(region_txt, n), y=n))+
+  geom_bar(aes( fill=pd), stat= "identity", position = "dodge")+
+  labs(title = "Events by region", x = "region", y = "count", fill = "period")+
+  theme_economist()+
+  scale_fill_manual(values = c("#66b2b2","#006666")) +
+  coord_flip() 
+
+p2
+```
+
+* The region with the most terrorist attack bacame "Middle East & North Africa" after 2000. ("South America" before 2000).
+
+* "South Asia" saw the largest increase in terrorism since the 70s.
+
+
+
+## Number of deaths and number of events
+##comparison by horizontal bar graph
+```{r fig.width=14}
+pkr <- gbtr2k %>% filter(!is.na(nkill)) %>%  group_by(region_txt) %>% 
+  summarise(ksum=sum(nkill)) %>% 
+  ggplot(aes(reorder(region_txt,ksum), ksum))+
+  geom_bar(stat = "identity", fill="#2E8B57")+
+  coord_flip()+
+  labs(title = "Num. of kills by region", subtitle = "without missing values, after 2000", x="region", y="count")+
+  theme_economist()
+
+  
+per <-   gbtr2k %>% group_by(region_txt) %>% count() %>% top_n(10,n) %>% 
+  ggplot(aes(x=reorder(region_txt, n), y=n))+
+  geom_bar(stat= "identity", fill="#006666")+
+  labs(title = "Events by region",subtitle = "after 2000", x = "region", y = "count")+
+  theme_economist()+
+  coord_flip()
+  
+  
+grid.arrange(pkr,per,ncol=2)
+```
+
+* South Asia has the largest num. of kills (other than "Sub-Saharan Africa", "Middle East & North Africa" ) despite the missing values.
+* North America has higher number of kills than Western Europe and South America, even though there is less attacks.
+
+## Events by country
+We'll look at data after year 2000
+```{r message=FALSE, warning=FALSE}
+pec <- gbtr2k %>% group_by(country_txt) %>% count() %>% ungroup() %>%
+  top_n(n=20,wt = n) %>% 
+  ggplot(aes(reorder(country_txt, n), n))+
+  geom_bar(stat = "identity", fill="#21618C") +
+  labs(title = "Event by country", subtitle = "after 2000", x = "Country", y = "Count") +
+  theme_economist() +
+  scale_fill_manual(values = wes_palette(n=4,"Cavalcanti1"))+
+  coord_flip()
+pec
+```
+
+## Suicide attack
+```{r}
+dtscd <- gbtr2k %>% filter(!is.na(suicide)) %>%  group_by(region_txt, suicide) %>% count()  %>%
+  ungroup() %>% group_by(region_txt) %>% mutate(pct=n/sum(n)) %>% filter(suicide==1)
+
+ggplot(dtscd, aes(reorder(region_txt, pct), pct*100)) +
+  geom_bar(stat = "identity", fill="#5D6D7E")+
+  coord_flip()+
+  labs(title = "Pct of suicide attack by region", subtitle = "after 2000", x="region",y="%")+
+  theme_economist()
+
+```
+
+## Groups, attacks, and suicide
+##stacked horizontal bar chart
+```{r fig.width=10}
+gbtr %>%filter(gname!="Unknown") %>%  group_by(gname,suicide) %>% summarise(n=n()) %>%
+  ungroup() %>% group_by(gname) %>% mutate(sum=sum(n)) %>% ungroup() %>%  top_n(30,sum) %>% 
+  ggplot(aes(x=reorder(gname,sum),n, fill=factor(suicide, levels = c(1,0)))) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Groups and attacks", x="groups", y="attacks", fill="suicide") +
+  theme_economist_white() +
+  scale_fill_manual(values = wes_palette(n=2, "Cavalcanti1"))
+```
+Disregarding the "Unknown" groups
+
+* Taliban, ISIL, SL is reponsible for the most attacks. 
+* ISIL carried out the most suicide attacks.(23%)
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+grp <- gbtr %>%filter(gname!="Unknown") %>%  group_by(gname,suicide) %>% summarise(n=n()) %>%
+  ungroup() %>% group_by(gname) %>% mutate(sum=sum(n)) %>% ungroup() %>%  top_n(15,sum)
+tp <-  gbtr %>% filter(gname %in% grp$gname)
+
+pal <- colorFactor(
+  palette = 'Set1',
+  levels = tp$gname
+)
+
+grpmap <- leaflet(data= tp) %>% 
+  addProviderTiles(providers$CartoDB.DarkMatter) %>% 
+  addCircles(color= ~pal(gname), stroke = TRUE, fillOpacity = 0.5, 
+             popup = ~as.character(gname)) %>% 
+  addLegend(pal=pal, values = tp$gname)
+
+grpmap
+```
+
+
+
+## Attack type by region 
+##stacked vertical bar chart
+```{r}
+wp <- dt %>% select(1,2,3,4,9,11,13,14,15,27,28,30,59,83,85,99,102,117)
+wp$imonth[wp$imonth==0] <- NA
+wp$iday[wp$iday==0] <- NA
+```
+
+```{r attack and region, fig.width=16, fig.height=10}
+patkrg<- wp %>% group_by(region_txt, attacktype1_txt) %>% count() %>% 
+  ggplot(aes(region_txt, n, fill=attacktype1_txt)) +
+  geom_bar(stat = "identity",position = "stack")+
+  scale_fill_manual(values = wes_palette("Darjeeling1" ,n=9, type="continuous"))+
+  theme_economist()+
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 0.8))+
+  labs(title = "Attack type by region",
+       x="region", y="num.", fill="attack type")
+
+patkrg2<- wp %>% group_by(region_txt, attacktype1_txt) %>% count() %>% 
+  ggplot(aes(region_txt, n, fill=attacktype1_txt)) +
+  geom_bar(stat = "identity",position = "fill")+
+  scale_fill_manual(values = wes_palette("Darjeeling1" ,n=9, type="continuous"))+
+  theme_economist()+
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 0.8))+
+  labs(title = "Attack type by region",
+       x="region", y="num.", fill="attack type")
+
+patkrg
+patkrg2
+```
+
+* Western Europe has more "Facility/Infrastructure Attack" (in number) than any other region.
+* Bombing/Explosion is the most common attack type in Middle East & North Africa.
+
+## Attack type by group
+##vertical stacked bar graph
+Different groups might prefer different types of attack method. 
+There are ``r length(unique(wp$gname))`` groups in the data. We'll look at the groups with the most attacks.
+```{r fig.width=12}
+wp %>% filter(gname %in% grp$gname)%>% 
+  group_by(gname, attacktype1_txt) %>% count() %>% 
+  ggplot(aes(gname, n, fill= attacktype1_txt))+
+  geom_bar(stat = "identity",position = "stack")+
+  scale_fill_manual(values = wes_palette("Darjeeling1",n=9, type="continuous"))+
+  theme_economist()+
+  scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 5))+
+  labs(title = "Attack type by groups", subtitle = "Groups with the most attacks",
+       x="groups", y="pct", fill="attack type")
+
+```
+
+* Armed assault is common in most groups except IRA which prefers assassination next to bombing.
+* Bombing is the most used attack type by ISIL.
+* 34% of ISIL's bombing attack is suicide attack.
+
+```{r}
+wp %>% filter(attacktype1_txt=="Bombing/Explosion" & gname %in% grp$gname ) %>% 
+  group_by(gname, suicide) %>% count() %>% ungroup() %>% group_by(gname) %>% mutate(pct=n/sum(n)) %>% filter(suicide==1) %>% arrange(desc(pct))
+```
+
+## Number of death by attack type and region
+## horizontal bar graph
+```{r fig.width=15}
+wp %>%  filter(!is.na(nkill)&attacktype1_txt!="Unknown") %>%
+  group_by(region_txt,attacktype1_txt) %>% 
+  summarise(sumk=sum(nkill), event=n(), kperattack=sum(nkill)/n()) %>% 
+    ggplot(aes(reorder(attacktype1_txt, kperattack), kperattack))+
+  geom_bar(aes(fill=region_txt), stat = "identity")+
+  coord_flip()+
+  facet_wrap(.~ region_txt, ncol = 4, scales = "free_x")+
+  labs(title = "num. of death by attack type and region", x="attack type", y="death per event")+
+  scale_fill_manual(values = wes_palette("Darjeeling1", n=12, type = "continuous"))+
+  theme(legend.position = "none")
+```
+
+* Types of attack that cause the most death/attack is drastically different from region to region.
+* Bombing (to my surprise) isn't responsible for the most death/attack. Instead it's armed assault and hostage taking in most region.
+* Hostage taking has the most death/attack in East Asia, Eastern Europe, Middle East & North Africa, South Asia, Southeast Asia, Sub-Saharan Africa and Western Europe.
+
+* North America's extreme data reflects 9/11 attacks on 2001, with nearly 3,000 recorded deaths in 4 attacks.
+
+
+
+
+
+
+
+

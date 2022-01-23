@@ -1,0 +1,202 @@
+---
+title: "Global Terrorism Analysis- Review 2"
+author: "FDA REVIEW-2"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(rworldmap)
+library(maps)
+library(ggmap)
+library(highcharter)
+library(mapproj)
+
+library(data.table)
+library(bit64)
+
+library(maptools)
+library(RColorBrewer)
+library(mapdata)
+
+```
+```{r}
+data <- read.csv("C:/Users/prasa/Desktop/project data analytics/globalterrorismdb_0221dist.csv")
+```
+
+```{r}
+data=rename(data,id=eventid,year=iyear,nation=country_txt,Region=region_txt,attack=attacktype1_txt,
+            target=targtype1_txt,weapon=weaptype1_txt,Killed=nkill, wounded=nwound)
+
+data$Killed=as.integer(data$Killed)
+data$wounded=as.integer(data$wounded)
+
+data$Killed[which(is.na(data$Killed))]=0
+data$wounded[which(is.na(data$wounded))]=0
+
+US<-filter(data,nation =="United States")
+US <- rename(US, long=longitude, lat=latitude)
+India<-filter(data,nation=="India")
+wEurope<-filter(data,Region=="Western Europe")
+Pakistan<-filter(data,nation=="Pakistan")
+SEAsia<-rbind(India,Pakistan)
+
+countries<-filter(data,nation %in% c("United States","India","Pakistan","Japan"))
+
+countries_m<-rbind(countries,wEurope)
+```
+# Total No of Attacks by Year
+
+```{r}
+global_t <- data%>%group_by(year,nation,Region)%>%summarize(Total=n())
+
+global_y <- global_t%>%group_by(year)%>%summarize(Total=sum(Total))
+
+highchart() %>% 
+  hc_chart(type = "column") %>% 
+  hc_title(text = "Global Terror attacks by year") %>% 
+  hc_xAxis(categories = global_y$year) %>% 
+  hc_add_series(data = global_y$Total,
+                name = "no of attacks",colorByPoint = TRUE)
+```
+# Total No of Attacks by countries
+
+```{r}
+global_n <- global_t%>%group_by(nation)%>%summarize(Total=sum(Total))%>%arrange(desc(Total))%>%filter(Total>300)
+
+
+highchart() %>% 
+  hc_chart(type = "column") %>% 
+  hc_title(text = "Global Terror attacks by countries") %>% 
+  hc_xAxis(categories = global_n$nation) %>% 
+  hc_add_series(data = global_n$Total,
+                name = "no of attacks",colorByPoint = TRUE)
+```
+
+# Total No of Attacks by Region
+
+```{r}
+global_r <- global_t%>%group_by(Region)%>%summarize(Total=sum(Total))%>%arrange(desc(Total))
+highchart() %>% 
+  hc_chart(type = "column") %>% 
+  hc_title(text = "Global Terror attacks by region") %>% 
+  hc_xAxis(categories = global_r$Region) %>% 
+   hc_add_series(data = global_r$Total,
+                name = "no of attacks",colorByPoint = TRUE)
+```
+```{r}
+countries_s<-countries%>%
+  group_by(nation,year)%>%
+  summarise(Killed=sum(Killed),wounded=sum(wounded))%>%
+  mutate(casualties=Killed + wounded)
+
+ggplot(countries_s,aes(x=year,y=casualties,group=nation))+
+  geom_line(aes(color=nation),size=1)+ 
+   theme(legend.position="bottom")+
+  scale_y_continuous("Casualties in attacks")+
+  ggtitle("Casualties in selected countries")
+```
+
+
+```{r}
+USf <- US%>%
+  filter(long<0,lat<50,lat>27)%>%
+  filter(Killed!=0)
+
+USA <- map_data("state")
+
+theme_map <- function(base_size = 9, base_family = "") {
+  theme_bw(base_size = base_size, base_family = base_family) %+replace%
+    theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_blank(),
+          panel.border = element_blank(),
+          panel.grid = element_blank(),
+          panel.spacing = unit(0, "lines"),
+          plot.background = element_blank(),
+          legend.justification = c(0, 0),
+          legend.position = c(0, 0))
+}
+
+ggplot(USA, aes(x = long, y = lat,group=group)) +
+  geom_polygon(col = "green",fill="white") +
+   geom_point(data = USf, aes(group=provstate,size=Killed),
+             col = "red", shape = 16, alpha = 0.9) +
+        coord_map()+
+        theme_map()+
+      ggtitle("Killed in USA by terror attacks")
+```
+
+
+```{r}
+USw <- US%>%
+  filter(long<0,lat<50,lat>27)%>%
+  filter(wounded!=0)
+
+USA <- map_data("state")
+
+
+ggplot(USA, aes(x = long, y = lat,   group = group)) +
+  geom_polygon(fill="white", col = "orange") +
+  geom_point(data = USw, aes( group = provstate,size=wounded),
+             col = "blue", shape = 16, alpha = 0.9) +
+  coord_map()+
+  theme_map()+
+      ggtitle("Wounded in USA by terror attacks")
+```
+
+```{r}
+IndiaK=filter(India,Killed!=0)
+india_map<-getMap(resolution="low")
+plot(india_map, xlim = c(72,75), ylim = c(8, 35), asp = 1,main = "Killed by Terror Attacks")
+points(IndiaK$longitude,IndiaK$latitude,col="red",cex=.6)
+```
+
+```{r}
+IndiaW<-filter(India,wounded!=0)
+india_map<-getMap(resolution="low")
+plot(india_map, xlim = c(73,75), ylim = c(8, 35), asp = 1,main = "wounded by Terror Attacks")
+points(IndiaW$longitude,IndiaW$latitude,col="blue",cex=.6)
+```
+```{r}
+terrorism<-fread("C:/Users/prasa./Desktop/project data analytics/globalterrorismdb_0221dist.csv")
+india_terrorism<-terrorism[country==92 & iyear>=2000,]
+india_terrorism
+```
+
+```{r}
+cities <- data.frame(lon=india_terrorism$longitude, lat=india_terrorism$latitude)
+map("world2Hires", "India")
+plot(cities$lon, cities$lat, col="red", pch=18)
+title("India-- Terror Strikes Since 2000 ")
+```
+
+Let us now understand What are the prominent weapons used
+
+```{r}
+weapons<-unique(india_terrorism$weaptype1_txt)
+library(ggmap)
+india<-map_data("world2Hires","India")
+india_gg<-ggplot() + geom_polygon(data = india, aes(x=long, y = lat, group = group)) + 
+  coord_fixed(0.75)
+india_gg<-india_gg+geom_point(data=india_terrorism,aes(x=longitude,y=latitude,color=as.factor(weaptype1_txt)))
+india_gg<-india_gg+scale_color_brewer(palette="Paired")+facet_wrap(~weaptype1_txt,ncol=3)+guides(color=F)
+india_gg
+```
+
+
+# What Kind of People are Targeted By the Terror Outfits?
+
+```{r}
+india_gg<-ggplot() + geom_polygon(data = india, aes(x=long, y = lat, group = group)) + coord_fixed(0.75)
+india_gg<-india_gg+geom_point(data=india_terrorism,aes(x=longitude,y=latitude,color=as.factor(targtype1_txt)))
+india_gg<-india_gg+facet_wrap(~targtype1_txt,ncol=4)+guides(color=F)
+india_gg
+```
+
